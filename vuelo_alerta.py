@@ -1,73 +1,67 @@
-import os
-import smtplib
-from email.message import EmailMessage
-from dotenv import load_dotenv
-import requests
-from datetime import datetime, timedelta
+from __future__ import annotations
 
-load_dotenv()
+import sys
+import time
 
-EMAIL_SENDER = os.getenv("EMAIL_SENDER")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
-MAX_PRICE = float(os.getenv("MAX_PRICE"))
+from flight_alert.config import AppConfig, load_config
+from flight_alert.notifier import send_email_alert
+from flight_alert.service import render_deals_message, search_deals
 
-ORIGEN = "ALC"  # IATA código de origen, ejemplo Alicante
 
-def enviar_email(asunto, cuerpo):
-    msg = EmailMessage()
-    msg["Subject"] = asunto
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = EMAIL_RECEIVER
-    msg.set_content(cuerpo)
+def _run_once(config: AppConfig) -> bool:
+    deals = search_deals(config)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        smtp.send_message(msg)
+    if not deals:
+        print("No se encontraron vuelos baratos para los criterios configurados.")
+        return False
 
-def buscar_vuelos():
-    fecha_inicio = datetime.now()
-    fecha_fin = fecha_inicio + timedelta(days=30)
-    url = (
-       f"https://www.ryanair.com/api/farfnd/3/oneWayFares?"
-    f"departureAirportIataCode={ORIGEN}&"
-    f"language=es&limit=50&market=es-es&offset=0&"
-    f"outboundDepartureDateFrom={fecha_inicio.strftime('%Y-%m-%d')}&"
-    f"outboundDepartureDateTo={fecha_fin.strftime('%Y-%m-%d')}"
-    )
+    body = render_deals_message(deals, config=config)
+    print(body)
 
-    print("Consultando API Ryanair...")
-    resp = requests.get(url)
-    if resp.status_code != 200:
-        print(f"Error en consulta API: {resp.status_code}")
-        return []
+    if not config.send_email:
+        print("SEND_EMAIL=false, se omite el envio de correo.")
+        return True
 
-    data = resp.json()
-    vuelos_baratos = []
+    try:
+        send_email_alert(config=config, body=body)
+    except ValueError as exc:
+        print(f"No se pudo enviar email: {exc}")
+        return True
 
-    for fare in data.get("fares", []):
-        precio = fare.get("summary", {}).get("price", {}).get("value", float("inf"))
-        destino = fare.get("outbound", {}).get("arrivalAirport", {}).get("name", "Destino desconocido")
-        fecha_salida = fare.get("outbound", {}).get("departureDate", "Fecha desconocida")
-        if precio <= MAX_PRICE:
-            vuelos_baratos.append({
-                "destino": destino,
-                "precio": precio,
-                "fecha": fecha_salida[:10]  # solo fecha, sin hora
-            })
+    print("Email enviado con alertas de vuelos baratos.")
+    return True
 
-    return vuelos_baratos
 
-def main():
-    vuelos = buscar_vuelos()
-    if vuelos:
-        cuerpo = f"✈️ Vuelos desde {ORIGEN} por menos de €{MAX_PRICE:.2f}:\n\n"
-        for v in vuelos:
-            cuerpo += f"- {v['destino']}: €{v['precio']} ({v['fecha']})\n"
-        enviar_email("¡Vuelos baratos encontrados!", cuerpo)
-        print("Email enviado con vuelos baratos.")
-    else:
-        print("No se encontraron vuelos baratos.")
+def main() -> int:
+    try:
+        config = load_config()
+    except Exception as exc:
+        print(f"Error de configuracion: {exc}")
+        return 1
+
+    if config.run_forever:
+        print(
+            "Modo continuo activo: chequeo cada "
+            f"{config.check_interval_hours} hora(s)."
+        )
+        while True:
+            print("-" * 80)
+            print("Iniciando nueva busqueda de vuelos...")
+            try:
+                _run_once(config)
+            except Exception as exc:
+                print(f"Error durante la busqueda: {exc}")
+            sleep_seconds = config.check_interval_hours * 3600
+            print(f"Esperando {config.check_interval_hours} hora(s) para el proximo ciclo.")
+            time.sleep(sleep_seconds)
+
+    try:
+        _run_once(config)
+    except Exception as exc:
+        print(f"Error durante la ejecucion: {exc}")
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
