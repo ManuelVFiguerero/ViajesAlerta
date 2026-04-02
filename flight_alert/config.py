@@ -42,6 +42,25 @@ def _parse_routes(value: str) -> list[tuple[str, str]]:
     return routes
 
 
+def _parse_airports(value: str, var_name: str) -> list[str]:
+    airports = [code.upper() for code in _parse_csv(value)]
+    for code in airports:
+        if len(code) != 3:
+            raise ValueError(
+                f"{var_name} contiene codigo invalido '{code}'. Usa IATA de 3 letras."
+            )
+    return airports
+
+
+def _build_routes_from_groups(origins: list[str], destinations: list[str]) -> list[tuple[str, str]]:
+    routes: list[tuple[str, str]] = []
+    for origin in origins:
+        for destination in destinations:
+            if origin != destination:
+                routes.append((origin, destination))
+    return routes
+
+
 @dataclass(frozen=True)
 class AppConfig:
     amadeus_client_id: str
@@ -56,6 +75,11 @@ class AppConfig:
     nonstop: bool
     currency: str
     max_results_per_date: int
+    send_whatsapp: bool
+    whatsapp_to: Optional[str]
+    twilio_account_sid: Optional[str]
+    twilio_auth_token: Optional[str]
+    twilio_whatsapp_from: Optional[str]
     email_sender: Optional[str]
     email_password: Optional[str]
     email_receiver: Optional[str]
@@ -78,19 +102,28 @@ def load_config() -> AppConfig:
     amadeus_client_secret = os.getenv("AMADEUS_CLIENT_SECRET", "").strip()
     max_price_str = os.getenv("MAX_PRICE", "").strip()
     routes_str = os.getenv("ROUTES", "").strip()
+    origin_airports_str = os.getenv("ORIGIN_AIRPORTS", "").strip()
+    destination_airports_str = os.getenv("DESTINATION_AIRPORTS", "").strip()
 
     if not amadeus_client_id or not amadeus_client_secret:
         raise ValueError("Faltan AMADEUS_CLIENT_ID o AMADEUS_CLIENT_SECRET.")
     if not max_price_str:
         raise ValueError("Falta MAX_PRICE.")
-    if not routes_str:
-        raise ValueError("Falta ROUTES.")
-
     max_price = float(max_price_str)
     if max_price <= 0:
         raise ValueError("MAX_PRICE debe ser mayor a 0.")
 
-    routes = _parse_routes(routes_str)
+    if routes_str:
+        routes = _parse_routes(routes_str)
+    else:
+        origins = _parse_airports(origin_airports_str, "ORIGIN_AIRPORTS")
+        destinations = _parse_airports(destination_airports_str, "DESTINATION_AIRPORTS")
+        if not origins or not destinations:
+            raise ValueError(
+                "Defini ROUTES o bien ORIGIN_AIRPORTS + DESTINATION_AIRPORTS."
+            )
+        routes = _build_routes_from_groups(origins, destinations)
+
     airlines = [code.upper() for code in _parse_csv(os.getenv("AIRLINES", ""))]
 
     start_in_days = int(os.getenv("START_IN_DAYS", "0"))
@@ -101,6 +134,12 @@ def load_config() -> AppConfig:
     currency = os.getenv("CURRENCY", "USD").upper()
     max_results_per_date = int(os.getenv("MAX_RESULTS_PER_DATE", "5"))
 
+    send_whatsapp = _bool_env("SEND_WHATSAPP", True)
+    whatsapp_to = os.getenv("WHATSAPP_TO")
+    twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    twilio_whatsapp_from = os.getenv("TWILIO_WHATSAPP_FROM")
+
     email_sender = os.getenv("EMAIL_SENDER")
     email_password = os.getenv("EMAIL_PASSWORD")
     email_receiver = os.getenv("EMAIL_RECEIVER")
@@ -108,7 +147,7 @@ def load_config() -> AppConfig:
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", "465"))
     smtp_ssl = _bool_env("SMTP_SSL", True)
-    send_email = _bool_env("SEND_EMAIL", True)
+    send_email = _bool_env("SEND_EMAIL", False)
 
     run_forever = _bool_env("RUN_FOREVER", False)
     check_interval_hours = int(os.getenv("CHECK_INTERVAL_HOURS", "24"))
@@ -137,6 +176,11 @@ def load_config() -> AppConfig:
         nonstop=nonstop,
         currency=currency,
         max_results_per_date=max_results_per_date,
+        send_whatsapp=send_whatsapp,
+        whatsapp_to=whatsapp_to,
+        twilio_account_sid=twilio_account_sid,
+        twilio_auth_token=twilio_auth_token,
+        twilio_whatsapp_from=twilio_whatsapp_from,
         email_sender=email_sender,
         email_password=email_password,
         email_receiver=email_receiver,

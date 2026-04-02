@@ -4,7 +4,7 @@ import sys
 import time
 
 from flight_alert.config import AppConfig, load_config
-from flight_alert.notifier import send_email_alert
+from flight_alert.notifier import send_email_alert, send_whatsapp_alert
 from flight_alert.service import render_deals_message, search_deals
 
 
@@ -18,17 +18,21 @@ def _run_once(config: AppConfig) -> bool:
     body = render_deals_message(deals, config=config)
     print(body)
 
-    if not config.send_email:
+    if config.send_whatsapp:
+        try:
+            send_whatsapp_alert(config=config, body=body)
+            print("WhatsApp enviado con alertas de vuelos baratos.")
+        except ValueError as exc:
+            print(f"No se pudo enviar WhatsApp: {exc}")
+
+    if config.send_email:
+        try:
+            send_email_alert(config=config, body=body)
+            print("Email enviado con alertas de vuelos baratos.")
+        except ValueError as exc:
+            print(f"No se pudo enviar email: {exc}")
+    else:
         print("SEND_EMAIL=false, se omite el envio de correo.")
-        return True
-
-    try:
-        send_email_alert(config=config, body=body)
-    except ValueError as exc:
-        print(f"No se pudo enviar email: {exc}")
-        return True
-
-    print("Email enviado con alertas de vuelos baratos.")
     return True
 
 

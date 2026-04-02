@@ -3,8 +3,9 @@
 Este proyecto busca vuelos baratos para multiples rutas y varias aerolineas
 (Copa, American Airlines, Avianca, LATAM, etc.) usando la API de Amadeus.
 
-Puede ejecutarse una vez o en modo continuo (chequeo diario) y te avisa por email
-cuando encuentra ofertas por debajo de tu precio maximo.
+Puede ejecutarse una vez o en modo continuo (chequeo diario) y te avisa por
+WhatsApp (Twilio) y opcionalmente por email cuando encuentra ofertas por debajo
+de tu precio maximo.
 
 ## 1) Requisitos
 
@@ -12,7 +13,11 @@ cuando encuentra ofertas por debajo de tu precio maximo.
 - Cuenta de Amadeus for Developers con:
   - `AMADEUS_CLIENT_ID`
   - `AMADEUS_CLIENT_SECRET`
-- Credenciales SMTP para email (por ejemplo Gmail con App Password)
+- Cuenta Twilio con WhatsApp habilitado:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_WHATSAPP_FROM` (ejemplo: `whatsapp:+14155238886`)
+- Email es opcional
 
 ## 2) Instalacion
 
@@ -32,21 +37,18 @@ cp .env.example .env
 
 2. Edita `.env` con tus claves y reglas.
 
-### Ejemplo de rutas para tu caso
+### Rutas y destinos ampliados
 
-Ya viene cargado en `.env.example`:
+`ORIGIN_AIRPORTS` + `DESTINATION_AIRPORTS` te genera automaticamente todas las
+combinaciones origen-destino (sin repetir origen=destino).
 
-- Buenos Aires -> Costa Rica
-- Buenos Aires -> Guatemala
+En el `.env.example` viene listo para:
+
+- Buenos Aires y Santiago -> Centroamerica, Europa, Brasil y USA
 - Costa Rica -> Guatemala
-- Santiago -> Costa Rica
-- Santiago -> Guatemala
 
-Formato:
-
-```env
-ROUTES=EZE-SJO,EZE-GUA,SJO-GUA,SCL-SJO,SCL-GUA
-```
+Si preferis control manual, podes usar `ROUTES=...` y dejar vacias las variables
+de grupos.
 
 ### Aerolineas
 
@@ -59,7 +61,22 @@ En `AIRLINES` podes filtrar por codigos IATA de aerolinea:
 
 Si queres incluir todas, deja `AIRLINES=` vacio.
 
-## 4) Ejecucion
+## 4) Notificaciones por WhatsApp
+
+1. Crea un proyecto en Twilio y habilita WhatsApp sandbox o numero productivo.
+2. Completa en `.env`:
+
+```env
+SEND_WHATSAPP=true
+WHATSAPP_TO=whatsapp:+5492213041688
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+```
+
+Con esto, cada vez que encuentre ofertas, te llega mensaje al WhatsApp.
+
+## 5) Ejecucion
 
 ### Ejecutar una sola vez
 
@@ -82,19 +99,22 @@ Y luego:
 python3 vuelo_alerta.py
 ```
 
-## 5) Variables principales
+## 6) Variables principales
 
 - `MAX_PRICE`: precio maximo a considerar "barato"
-- `ROUTES`: lista de rutas `ORIGEN-DESTINO` separadas por coma
+- `ORIGIN_AIRPORTS`: origenes separados por coma (ej: `EZE,AEP,SCL,SJO`)
+- `DESTINATION_AIRPORTS`: destinos separados por coma
+- `ROUTES`: opcional; lista manual `ORIGEN-DESTINO` separada por coma
 - `START_IN_DAYS`: desde que dia empezar a buscar (0 = hoy)
 - `DEPARTURE_WINDOW_DAYS`: cuantos dias hacia adelante mirar
 - `DATE_STEP_DAYS`: salto entre fechas (1 = todos los dias)
 - `NONSTOP_ONLY`: solo directos o no
 - `AIRLINES`: filtro opcional de aerolineas
-- `SEND_EMAIL`: si `false`, solo imprime resultados
+- `SEND_WHATSAPP`: envia alertas por WhatsApp (Twilio)
+- `SEND_EMAIL`: email opcional (por default `false`)
 
-## 6) Notas
+## 7) Notas
 
 - El proyecto usa el endpoint de ofertas de vuelo de Amadeus.
 - Los resultados dependen de disponibilidad y reglas del proveedor.
-- Si no hay ofertas por debajo del umbral, no se envia email.
+- Si no hay ofertas por debajo del umbral, no se envia alerta.

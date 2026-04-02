@@ -5,7 +5,7 @@ from typing import Iterable
 
 from .amadeus_client import AmadeusClient
 from .config import AppConfig
-from .models import FlightDeal
+from .models import FlightOffer
 
 
 def _iter_departure_dates(config: AppConfig) -> Iterable[date]:
@@ -18,13 +18,13 @@ def _iter_departure_dates(config: AppConfig) -> Iterable[date]:
         current += timedelta(days=config.date_step_days)
 
 
-def search_deals(config: AppConfig) -> list[FlightDeal]:
+def search_deals(config: AppConfig) -> list[FlightOffer]:
     client = AmadeusClient(
         client_id=config.amadeus_client_id,
         client_secret=config.amadeus_client_secret,
     )
     allowed_airlines = config.allowed_airlines_set()
-    deals: list[FlightDeal] = []
+    deals: list[FlightOffer] = []
 
     for origin, destination in config.routes:
         for departure_date in _iter_departure_dates(config):
@@ -41,7 +41,7 @@ def search_deals(config: AppConfig) -> list[FlightDeal]:
             )
             for offer in offers:
                 deals.append(
-                    FlightDeal(
+                    FlightOffer(
                         origin=offer.origin,
                         destination=offer.destination,
                         departure_at=offer.departure_at,
@@ -54,7 +54,7 @@ def search_deals(config: AppConfig) -> list[FlightDeal]:
                 )
 
     # Keep the best deal per exact route+date+carriers tuple.
-    unique: dict[tuple[str, str, str, tuple[str, ...]], FlightDeal] = {}
+    unique: dict[tuple[str, str, str, tuple[str, ...]], FlightOffer] = {}
     for deal in deals:
         key = deal.dedupe_key()
         existing = unique.get(key)
@@ -65,7 +65,7 @@ def search_deals(config: AppConfig) -> list[FlightDeal]:
     return sorted_deals
 
 
-def render_deals_message(deals: list[FlightDeal], config: AppConfig) -> str:
+def render_deals_message(deals: list[FlightOffer], config: AppConfig) -> str:
     lines = [
         f"Ofertas encontradas por debajo de {config.max_price:.2f} {config.currency}:",
         "",
