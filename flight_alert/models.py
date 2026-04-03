@@ -8,6 +8,7 @@ class FlightOffer:
     departure_at: str
     arrival_at: str
     return_at: str | None
+    deep_link: str
     price: float
     currency: str
     carriers: tuple[str, ...]

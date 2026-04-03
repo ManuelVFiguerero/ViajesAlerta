@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import requests
+from urllib.parse import urlencode
 
 from .models import FlightOffer
 
@@ -51,6 +52,7 @@ class SerpApiClient:
             params["max_price"] = int(round(max_price))
         if trip_type == 1 and return_date:
             params["return_date"] = return_date
+        search_url = f"https://www.google.com/travel/flights?{urlencode(params)}"
 
         response = requests.get(url, params=params, timeout=self._timeout_seconds)
         response.raise_for_status()
@@ -67,6 +69,7 @@ class SerpApiClient:
                 raw=item,
                 currency=currency,
                 return_date=return_date,
+                search_url=search_url,
             )
             if parsed is None:
                 continue
@@ -86,6 +89,7 @@ class SerpApiClient:
         raw: dict[str, Any],
         currency: str,
         return_date: Optional[str],
+        search_url: str,
     ) -> Optional[FlightOffer]:
         segments = raw.get("flights") or []
         if not segments:
@@ -124,4 +128,5 @@ class SerpApiClient:
             currency=currency,
             carriers=tuple(carriers),
             stops=max(0, len(segments) - 1),
+            search_url=search_url,
         )

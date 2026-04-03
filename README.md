@@ -144,3 +144,4 @@ python3 vuelo_alerta.py
 - Los resultados dependen de disponibilidad y reglas del proveedor.
 - Si no hay ofertas por debajo del umbral, no se envia alerta.
 - Si alguna combinacion devuelve error o sin resultados, se salta y el resto continua.
+- Cada oferta en Telegram incluye un enlace directo a Google Flights.

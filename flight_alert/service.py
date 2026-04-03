@@ -98,10 +98,12 @@ def render_deals_message(deals: list[FlightOffer], config: AppConfig) -> str:
         date_block = deal.departure_at[:10]
         if deal.return_at:
             date_block = f"{deal.departure_at[:10]} -> {deal.return_at[:10]}"
+        booking_link = deal.google_flights_url if deal.google_flights_url else "N/A"
         lines.append(
             f"- {deal.origin}->{deal.destination} | "
             f"{date_block} | "
             f"{deal.price:.2f} {deal.currency} | "
-            f"Aerolineas: {airlines} | Escalas: {deal.stops}"
+            f"Aerolineas: {airlines} | Escalas: {deal.stops}\n"
+            f"  Link: {booking_link}"
         )
     return "\n".join(lines)
