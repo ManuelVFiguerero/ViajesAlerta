@@ -128,5 +128,5 @@ class SerpApiClient:
             currency=currency,
             carriers=tuple(carriers),
             stops=max(0, len(segments) - 1),
-            search_url=search_url,
+            deep_link=search_url,
         )
