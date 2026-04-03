@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import requests
 import sys
 import time
 
@@ -22,7 +23,7 @@ def _run_once(config: AppConfig) -> bool:
         try:
             send_telegram_alert(config=config, body=body)
             print("Telegram enviado con alertas de vuelos baratos.")
-        except ValueError as exc:
+        except (ValueError, requests.RequestException) as exc:
             print(f"No se pudo enviar Telegram: {exc}")
 
     if config.send_email:
