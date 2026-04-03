@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -52,7 +53,9 @@ def _parse_airports(value: str, var_name: str) -> list[str]:
     return airports
 
 
-def _build_routes_from_groups(origins: list[str], destinations: list[str]) -> list[tuple[str, str]]:
+def _build_routes_from_groups(
+    origins: list[str], destinations: list[str]
+) -> list[tuple[str, str]]:
     routes: list[tuple[str, str]] = []
     for origin in origins:
         for destination in destinations:
@@ -61,12 +64,39 @@ def _build_routes_from_groups(origins: list[str], destinations: list[str]) -> li
     return routes
 
 
+def _parse_optional_date(var_name: str) -> Optional[date]:
+    raw = os.getenv(var_name, "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"{var_name} debe usar formato YYYY-MM-DD.") from exc
+
+
+def _parse_trip_type(raw_value: str) -> int:
+    raw = raw_value.strip().lower()
+    if raw in {"1", "round_trip", "roundtrip", "ida_vuelta", "ida-y-vuelta"}:
+        return 1
+    if raw in {"2", "one_way", "oneway", "solo_ida"}:
+        return 2
+    raise ValueError(
+        "TRIP_TYPE debe ser 1/round_trip (ida y vuelta) o 2/one_way (solo ida)."
+    )
+
+
 @dataclass(frozen=True)
 class AppConfig:
     serpapi_key: str
     max_price: float
     routes: list[tuple[str, str]]
     airlines: list[str]
+    trip_type: int
+    fixed_departure_date_from: Optional[date]
+    fixed_departure_date_to: Optional[date]
+    return_days_min: int
+    return_days_max: int
+    return_days_step: int
     start_in_days: int
     departure_window_days: int
     date_step_days: int
@@ -108,6 +138,7 @@ def load_config() -> AppConfig:
         raise ValueError("Falta SERPAPI_KEY.")
     if not max_price_str:
         raise ValueError("Falta MAX_PRICE.")
+
     max_price = float(max_price_str)
     if max_price <= 0:
         raise ValueError("MAX_PRICE debe ser mayor a 0.")
@@ -124,6 +155,13 @@ def load_config() -> AppConfig:
         routes = _build_routes_from_groups(origins, destinations)
 
     airlines = [code.upper() for code in _parse_csv(os.getenv("AIRLINES", ""))]
+
+    trip_type = _parse_trip_type(os.getenv("TRIP_TYPE", "one_way"))
+    fixed_departure_date_from = _parse_optional_date("FIXED_DEPARTURE_DATE_FROM")
+    fixed_departure_date_to = _parse_optional_date("FIXED_DEPARTURE_DATE_TO")
+    return_days_min = int(os.getenv("RETURN_DAYS_MIN", "30"))
+    return_days_max = int(os.getenv("RETURN_DAYS_MAX", "30"))
+    return_days_step = int(os.getenv("RETURN_DAYS_STEP", "1"))
 
     start_in_days = int(os.getenv("START_IN_DAYS", "0"))
     departure_window_days = int(os.getenv("DEPARTURE_WINDOW_DAYS", "30"))
@@ -152,8 +190,24 @@ def load_config() -> AppConfig:
     run_forever = _bool_env("RUN_FOREVER", False)
     check_interval_hours = int(os.getenv("CHECK_INTERVAL_HOURS", "24"))
 
+    if fixed_departure_date_from and not fixed_departure_date_to:
+        fixed_departure_date_to = fixed_departure_date_from
+    if fixed_departure_date_to and not fixed_departure_date_from:
+        fixed_departure_date_from = fixed_departure_date_to
+    if (
+        fixed_departure_date_from
+        and fixed_departure_date_to
+        and fixed_departure_date_to < fixed_departure_date_from
+    ):
+        raise ValueError("FIXED_DEPARTURE_DATE_TO no puede ser menor que FROM.")
     if departure_window_days < 0:
         raise ValueError("DEPARTURE_WINDOW_DAYS no puede ser negativo.")
+    if return_days_min <= 0:
+        raise ValueError("RETURN_DAYS_MIN debe ser mayor a 0.")
+    if return_days_max < return_days_min:
+        raise ValueError("RETURN_DAYS_MAX debe ser mayor o igual a RETURN_DAYS_MIN.")
+    if return_days_step <= 0:
+        raise ValueError("RETURN_DAYS_STEP debe ser mayor a 0.")
     if date_step_days <= 0:
         raise ValueError("DATE_STEP_DAYS debe ser mayor a 0.")
     if adults <= 0:
@@ -168,6 +222,12 @@ def load_config() -> AppConfig:
         max_price=max_price,
         routes=routes,
         airlines=airlines,
+        trip_type=trip_type,
+        fixed_departure_date_from=fixed_departure_date_from,
+        fixed_departure_date_to=fixed_departure_date_to,
+        return_days_min=return_days_min,
+        return_days_max=return_days_max,
+        return_days_step=return_days_step,
         start_in_days=start_in_days,
         departure_window_days=departure_window_days,
         date_step_days=date_step_days,

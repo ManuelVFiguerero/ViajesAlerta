@@ -7,6 +7,10 @@ Puede ejecutarse una vez o en modo continuo (chequeo diario) y te avisa por
 **Telegram** (canal principal) y opcionalmente por email cuando encuentra
 ofertas por debajo de tu precio maximo.
 
+Soporta:
+- `TRIP_TYPE=2` (solo ida)
+- `TRIP_TYPE=1` (ida y vuelta) con vuelta flexible, por ejemplo entre 28 y 32 dias.
+
 ## 1) Requisitos
 
 - Python 3.10+
@@ -47,6 +51,21 @@ En el `.env.example` ya viene listo para:
 
 Si preferis control manual, podes usar `ROUTES=...` y dejar vacias las
 variables de grupos.
+
+### Fechas de diciembre + vuelta ~30 dias
+
+Si queres buscar para fiestas de fin de ano, configura salida fija en diciembre:
+
+```env
+TRIP_TYPE=1
+FIXED_DEPARTURE_DATE_FROM=2026-12-15
+FIXED_DEPARTURE_DATE_TO=2026-12-31
+RETURN_DAYS_MIN=28
+RETURN_DAYS_MAX=32
+RETURN_DAYS_STEP=1
+```
+
+Con eso prueba salidas entre esas fechas y regreso entre 28 y 32 dias despues.
 
 ### Aerolineas
 
@@ -108,6 +127,10 @@ python3 vuelo_alerta.py
 - `START_IN_DAYS`: desde que dia empezar a buscar (0 = hoy)
 - `DEPARTURE_WINDOW_DAYS`: cuantos dias hacia adelante mirar
 - `DATE_STEP_DAYS`: salto entre fechas (1 = todos los dias)
+- `TRIP_TYPE`: `2` solo ida, `1` ida y vuelta
+- `FIXED_DEPARTURE_DATE_FROM` y `FIXED_DEPARTURE_DATE_TO`: rango fijo de salida
+- `RETURN_DAYS_MIN` / `RETURN_DAYS_MAX`: ventana de dias para retorno (solo ida y vuelta)
+- `RETURN_DAYS_STEP`: salto de dias para probar retornos
 - `NONSTOP_ONLY`: solo directos o no
 - `AIRLINES`: filtro opcional de aerolineas
 - `GOOGLE_FLIGHTS_GL`: pais Google Flights (ej: `ar`)
@@ -120,3 +143,4 @@ python3 vuelo_alerta.py
 - El proyecto consulta resultados de Google Flights via SerpAPI.
 - Los resultados dependen de disponibilidad y reglas del proveedor.
 - Si no hay ofertas por debajo del umbral, no se envia alerta.
+- Si alguna combinacion devuelve error o sin resultados, se salta y el resto continua.

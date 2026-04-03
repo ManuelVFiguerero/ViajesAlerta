@@ -17,6 +17,8 @@ class SerpApiClient:
         origin: str,
         destination: str,
         departure_date: str,
+        return_date: Optional[str],
+        trip_type: int,
         currency: str,
         adults: int,
         nonstop: bool,
@@ -34,7 +36,7 @@ class SerpApiClient:
             "departure_id": origin,
             "arrival_id": destination,
             "outbound_date": departure_date,
-            "type": 2,  # one way
+            "type": trip_type,
             "currency": currency,
             "adults": adults,
             "stops": 1 if nonstop else 0,
@@ -47,6 +49,8 @@ class SerpApiClient:
             params["include_airlines"] = ",".join(sorted(allowed_airlines))
         if max_price > 0:
             params["max_price"] = int(round(max_price))
+        if trip_type == 1 and return_date:
+            params["return_date"] = return_date
 
         response = requests.get(url, params=params, timeout=self._timeout_seconds)
         response.raise_for_status()
@@ -62,6 +66,7 @@ class SerpApiClient:
                 destination=destination,
                 raw=item,
                 currency=currency,
+                return_date=return_date,
             )
             if parsed is None:
                 continue
@@ -76,7 +81,11 @@ class SerpApiClient:
 
     @staticmethod
     def _parse_offer(
-        origin: str, destination: str, raw: dict[str, Any], currency: str
+        origin: str,
+        destination: str,
+        raw: dict[str, Any],
+        currency: str,
+        return_date: Optional[str],
     ) -> Optional[FlightOffer]:
         segments = raw.get("flights") or []
         if not segments:
@@ -110,6 +119,7 @@ class SerpApiClient:
             destination=destination,
             departure_at=departure_at,
             arrival_at=arrival_at,
+            return_at=return_date,
             price=price_value,
             currency=currency,
             carriers=tuple(carriers),
