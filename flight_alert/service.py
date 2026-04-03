@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Iterable
 
-from .amadeus_client import AmadeusClient
 from .config import AppConfig
 from .models import FlightOffer
+from .serpapi_client import SerpApiClient
 
 
 def _iter_departure_dates(config: AppConfig) -> Iterable[date]:
@@ -19,10 +19,7 @@ def _iter_departure_dates(config: AppConfig) -> Iterable[date]:
 
 
 def search_deals(config: AppConfig) -> list[FlightOffer]:
-    client = AmadeusClient(
-        client_id=config.amadeus_client_id,
-        client_secret=config.amadeus_client_secret,
-    )
+    client = SerpApiClient(api_key=config.serpapi_key)
     allowed_airlines = config.allowed_airlines_set()
     deals: list[FlightOffer] = []
 
@@ -35,23 +32,14 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
                 currency=config.currency,
                 adults=config.adults,
                 nonstop=config.nonstop,
+                gl=config.gl,
+                hl=config.hl,
+                deep_search=config.deep_search,
                 max_results=config.max_results_per_date,
                 max_price=config.max_price,
                 allowed_airlines=allowed_airlines,
             )
-            for offer in offers:
-                deals.append(
-                    FlightOffer(
-                        origin=offer.origin,
-                        destination=offer.destination,
-                        departure_at=offer.departure_at,
-                        arrival_at=offer.arrival_at,
-                        price=offer.price,
-                        currency=offer.currency,
-                        carriers=offer.carriers,
-                        stops=offer.stops,
-                    )
-                )
+            deals.extend(offers)
 
     # Keep the best deal per exact route+date+carriers tuple.
     unique: dict[tuple[str, str, str, tuple[str, ...]], FlightOffer] = {}

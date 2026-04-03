@@ -1,23 +1,21 @@
-# Alerta de vuelos baratos (multi-aerolinea)
+# Alerta de vuelos baratos (SerpAPI + Telegram)
 
 Este proyecto busca vuelos baratos para multiples rutas y varias aerolineas
-(Copa, American Airlines, Avianca, LATAM, etc.) usando la API de Amadeus.
+(Copa, American Airlines, Avianca, LATAM, etc.) usando **SerpAPI (Google Flights)**.
 
 Puede ejecutarse una vez o en modo continuo (chequeo diario) y te avisa por
-WhatsApp (Twilio) y opcionalmente por email cuando encuentra ofertas por debajo
-de tu precio maximo.
+**Telegram** (canal principal) y opcionalmente por email cuando encuentra
+ofertas por debajo de tu precio maximo.
 
 ## 1) Requisitos
 
 - Python 3.10+
-- Cuenta de Amadeus for Developers con:
-  - `AMADEUS_CLIENT_ID`
-  - `AMADEUS_CLIENT_SECRET`
-- Cuenta Twilio con WhatsApp habilitado:
-  - `TWILIO_ACCOUNT_SID`
-  - `TWILIO_AUTH_TOKEN`
-  - `TWILIO_WHATSAPP_FROM` (ejemplo: `whatsapp:+14155238886`)
-- Email es opcional
+- Cuenta SerpAPI con:
+  - `SERPAPI_KEY`
+- Bot de Telegram (gratis) con:
+  - `TELEGRAM_BOT_TOKEN`
+  - `TELEGRAM_CHAT_ID`
+- Email opcional
 
 ## 2) Instalacion
 
@@ -39,16 +37,16 @@ cp .env.example .env
 
 ### Rutas y destinos ampliados
 
-`ORIGIN_AIRPORTS` + `DESTINATION_AIRPORTS` te genera automaticamente todas las
+`ORIGIN_AIRPORTS` + `DESTINATION_AIRPORTS` genera automaticamente todas las
 combinaciones origen-destino (sin repetir origen=destino).
 
-En el `.env.example` viene listo para:
+En el `.env.example` ya viene listo para:
 
 - Buenos Aires y Santiago -> Centroamerica, Europa, Brasil y USA
 - Costa Rica -> Guatemala
 
-Si preferis control manual, podes usar `ROUTES=...` y dejar vacias las variables
-de grupos.
+Si preferis control manual, podes usar `ROUTES=...` y dejar vacias las
+variables de grupos.
 
 ### Aerolineas
 
@@ -61,20 +59,21 @@ En `AIRLINES` podes filtrar por codigos IATA de aerolinea:
 
 Si queres incluir todas, deja `AIRLINES=` vacio.
 
-## 4) Notificaciones por WhatsApp
+## 4) Notificaciones por Telegram (gratis)
 
-1. Crea un proyecto en Twilio y habilita WhatsApp sandbox o numero productivo.
-2. Completa en `.env`:
+1. Crea un bot con **@BotFather** y copia el token.
+2. Habla con tu bot (envia cualquier mensaje).
+3. Abri en navegador:
+   `https://api.telegram.org/bot<TU_TOKEN>/getUpdates`
+4. Copia el `chat.id` y colocalo en `.env`.
+
+Variables:
 
 ```env
-SEND_WHATSAPP=true
-WHATSAPP_TO=whatsapp:+5492213041688
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+SEND_TELEGRAM=true
+TELEGRAM_BOT_TOKEN=123456789:AA...
+TELEGRAM_CHAT_ID=123456789
 ```
-
-Con esto, cada vez que encuentre ofertas, te llega mensaje al WhatsApp.
 
 ## 5) Ejecucion
 
@@ -101,6 +100,7 @@ python3 vuelo_alerta.py
 
 ## 6) Variables principales
 
+- `SERPAPI_KEY`: clave privada de SerpAPI
 - `MAX_PRICE`: precio maximo a considerar "barato"
 - `ORIGIN_AIRPORTS`: origenes separados por coma (ej: `EZE,AEP,SCL,SJO`)
 - `DESTINATION_AIRPORTS`: destinos separados por coma
@@ -110,11 +110,13 @@ python3 vuelo_alerta.py
 - `DATE_STEP_DAYS`: salto entre fechas (1 = todos los dias)
 - `NONSTOP_ONLY`: solo directos o no
 - `AIRLINES`: filtro opcional de aerolineas
-- `SEND_WHATSAPP`: envia alertas por WhatsApp (Twilio)
+- `GOOGLE_FLIGHTS_GL`: pais Google Flights (ej: `ar`)
+- `GOOGLE_FLIGHTS_HL`: idioma Google Flights (ej: `es`)
+- `SEND_TELEGRAM`: envia alertas por Telegram
 - `SEND_EMAIL`: email opcional (por default `false`)
 
 ## 7) Notas
 
-- El proyecto usa el endpoint de ofertas de vuelo de Amadeus.
+- El proyecto consulta resultados de Google Flights via SerpAPI.
 - Los resultados dependen de disponibilidad y reglas del proveedor.
 - Si no hay ofertas por debajo del umbral, no se envia alerta.

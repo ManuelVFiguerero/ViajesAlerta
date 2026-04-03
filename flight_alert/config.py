@@ -63,8 +63,7 @@ def _build_routes_from_groups(origins: list[str], destinations: list[str]) -> li
 
 @dataclass(frozen=True)
 class AppConfig:
-    amadeus_client_id: str
-    amadeus_client_secret: str
+    serpapi_key: str
     max_price: float
     routes: list[tuple[str, str]]
     airlines: list[str]
@@ -74,12 +73,13 @@ class AppConfig:
     adults: int
     nonstop: bool
     currency: str
+    gl: str
+    hl: str
+    deep_search: bool
     max_results_per_date: int
-    send_whatsapp: bool
-    whatsapp_to: Optional[str]
-    twilio_account_sid: Optional[str]
-    twilio_auth_token: Optional[str]
-    twilio_whatsapp_from: Optional[str]
+    send_telegram: bool
+    telegram_bot_token: Optional[str]
+    telegram_chat_id: Optional[str]
     email_sender: Optional[str]
     email_password: Optional[str]
     email_receiver: Optional[str]
@@ -98,15 +98,14 @@ class AppConfig:
 
 
 def load_config() -> AppConfig:
-    amadeus_client_id = os.getenv("AMADEUS_CLIENT_ID", "").strip()
-    amadeus_client_secret = os.getenv("AMADEUS_CLIENT_SECRET", "").strip()
+    serpapi_key = os.getenv("SERPAPI_KEY", "").strip()
     max_price_str = os.getenv("MAX_PRICE", "").strip()
     routes_str = os.getenv("ROUTES", "").strip()
     origin_airports_str = os.getenv("ORIGIN_AIRPORTS", "").strip()
     destination_airports_str = os.getenv("DESTINATION_AIRPORTS", "").strip()
 
-    if not amadeus_client_id or not amadeus_client_secret:
-        raise ValueError("Faltan AMADEUS_CLIENT_ID o AMADEUS_CLIENT_SECRET.")
+    if not serpapi_key:
+        raise ValueError("Falta SERPAPI_KEY.")
     if not max_price_str:
         raise ValueError("Falta MAX_PRICE.")
     max_price = float(max_price_str)
@@ -132,13 +131,14 @@ def load_config() -> AppConfig:
     adults = int(os.getenv("ADULTS", "1"))
     nonstop = _bool_env("NONSTOP_ONLY", False)
     currency = os.getenv("CURRENCY", "USD").upper()
+    gl = os.getenv("GOOGLE_FLIGHTS_GL", "ar").lower()
+    hl = os.getenv("GOOGLE_FLIGHTS_HL", "es").lower()
+    deep_search = _bool_env("DEEP_SEARCH", False)
     max_results_per_date = int(os.getenv("MAX_RESULTS_PER_DATE", "5"))
 
-    send_whatsapp = _bool_env("SEND_WHATSAPP", True)
-    whatsapp_to = os.getenv("WHATSAPP_TO")
-    twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    twilio_whatsapp_from = os.getenv("TWILIO_WHATSAPP_FROM")
+    send_telegram = _bool_env("SEND_TELEGRAM", True)
+    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     email_sender = os.getenv("EMAIL_SENDER")
     email_password = os.getenv("EMAIL_PASSWORD")
@@ -164,8 +164,7 @@ def load_config() -> AppConfig:
         raise ValueError("CHECK_INTERVAL_HOURS debe ser mayor a 0.")
 
     return AppConfig(
-        amadeus_client_id=amadeus_client_id,
-        amadeus_client_secret=amadeus_client_secret,
+        serpapi_key=serpapi_key,
         max_price=max_price,
         routes=routes,
         airlines=airlines,
@@ -175,12 +174,13 @@ def load_config() -> AppConfig:
         adults=adults,
         nonstop=nonstop,
         currency=currency,
+        gl=gl,
+        hl=hl,
+        deep_search=deep_search,
         max_results_per_date=max_results_per_date,
-        send_whatsapp=send_whatsapp,
-        whatsapp_to=whatsapp_to,
-        twilio_account_sid=twilio_account_sid,
-        twilio_auth_token=twilio_auth_token,
-        twilio_whatsapp_from=twilio_whatsapp_from,
+        send_telegram=send_telegram,
+        telegram_bot_token=telegram_bot_token,
+        telegram_chat_id=telegram_chat_id,
         email_sender=email_sender,
         email_password=email_password,
         email_receiver=email_receiver,
