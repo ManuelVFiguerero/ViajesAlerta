@@ -52,7 +52,27 @@ class SerpApiClient:
             params["max_price"] = int(round(max_price))
         if trip_type == 1 and return_date:
             params["return_date"] = return_date
-        search_url = f"https://www.google.com/travel/flights?{urlencode(params)}"
+        public_link_params = {
+            "f": "0",
+            "hl": hl,
+            "gl": gl,
+            "curr": currency,
+            "adults": adults,
+            "stops": 1 if nonstop else 0,
+            "sort": "price",
+            "from": origin,
+            "to": destination,
+            "date": departure_date,
+        }
+        if trip_type == 1 and return_date:
+            public_link_params["trip"] = "round"
+            public_link_params["return"] = return_date
+        else:
+            public_link_params["trip"] = "oneway"
+        search_url = (
+            "https://www.google.com/travel/flights?"
+            f"{urlencode(public_link_params)}"
+        )
 
         response = requests.get(url, params=params, timeout=self._timeout_seconds)
         response.raise_for_status()
