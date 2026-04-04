@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Optional
 
 import requests
@@ -28,6 +29,10 @@ class SerpApiClient:
         gl: str,
         hl: str,
         deep_search: bool,
+        throttle_seconds: float,
+        max_retries: int,
+        backoff_base_seconds: float,
+        max_backoff_seconds: float,
         allowed_airlines: Optional[set[str]] = None,
     ) -> list[FlightOffer]:
         url = "https://serpapi.com/search.json"
@@ -74,8 +79,15 @@ class SerpApiClient:
             f"{urlencode(public_link_params)}"
         )
 
-        response = requests.get(url, params=params, timeout=self._timeout_seconds)
-        response.raise_for_status()
+        response = self._request_with_retry(
+            url=url,
+            params=params,
+            max_retries=max_retries,
+            backoff_base_seconds=backoff_base_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+        )
+        if throttle_seconds > 0:
+            time.sleep(throttle_seconds)
         payload = response.json()
         if payload.get("error"):
             raise RuntimeError(f"SerpAPI error: {payload['error']}")
@@ -101,6 +113,44 @@ class SerpApiClient:
 
         offers.sort(key=lambda offer: offer.price)
         return offers[:max_results]
+
+    def _request_with_retry(
+        self,
+        url: str,
+        params: dict[str, Any],
+        max_retries: int,
+        backoff_base_seconds: float,
+        max_backoff_seconds: float,
+    ) -> requests.Response:
+        attempt = 0
+        while True:
+            response = requests.get(url, params=params, timeout=self._timeout_seconds)
+
+            # Treat "no results" as a valid empty response instead of an exception.
+            if response.status_code == 200:
+                payload = response.json()
+                if payload.get("error"):
+                    error_text = str(payload["error"])
+                    if "hasn't returned any results" in error_text:
+                        return response
+                    raise RuntimeError(f"SerpAPI error: {error_text}")
+                return response
+
+            is_retryable = response.status_code == 429 or 500 <= response.status_code < 600
+            if not is_retryable or attempt >= max_retries:
+                response.raise_for_status()
+
+            retry_after = response.headers.get("Retry-After")
+            if retry_after and retry_after.isdigit():
+                wait_seconds = min(max_backoff_seconds, max(1.0, float(retry_after)))
+            else:
+                wait_seconds = min(
+                    max_backoff_seconds,
+                    backoff_base_seconds * (2**attempt),
+                )
+
+            time.sleep(wait_seconds)
+            attempt += 1
 
     @staticmethod
     def _parse_offer(

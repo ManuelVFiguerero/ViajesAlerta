@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
+import time
 from typing import Iterable
 
 from .config import AppConfig
@@ -26,6 +27,7 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
     client = SerpApiClient(api_key=config.serpapi_key)
     allowed_airlines = config.allowed_airlines_set()
     deals: list[FlightOffer] = []
+    requests_made = 0
 
     for origin, destination in config.routes:
         for departure_date in _iter_departure_dates(config):
@@ -35,6 +37,12 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
                     return_end = departure_date + timedelta(days=config.return_days_max)
                     return_date = return_start
                     while return_date <= return_end:
+                        if requests_made >= config.max_requests_per_run:
+                            print(
+                                "Se alcanzo MAX_REQUESTS_PER_RUN, "
+                                "se detiene la busqueda en esta corrida."
+                            )
+                            return _dedupe_and_sort(deals)
                         offers = client.search_offers(
                             origin=origin,
                             destination=destination,
@@ -50,10 +58,21 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
                             max_results=config.max_results_per_date,
                             max_price=config.max_price,
                             allowed_airlines=allowed_airlines,
+                            throttle_seconds=config.request_throttle_seconds,
+                            max_retries=config.serpapi_max_retries,
+                            backoff_base_seconds=config.serpapi_backoff_base_seconds,
+                            max_backoff_seconds=config.serpapi_max_backoff_seconds,
                         )
+                        requests_made += 1
                         deals.extend(offers)
                         return_date += timedelta(days=config.return_days_step)
                 else:
+                    if requests_made >= config.max_requests_per_run:
+                        print(
+                            "Se alcanzo MAX_REQUESTS_PER_RUN, "
+                            "se detiene la busqueda en esta corrida."
+                        )
+                        return _dedupe_and_sort(deals)
                     offers = client.search_offers(
                         origin=origin,
                         destination=destination,
@@ -69,12 +88,21 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
                         max_results=config.max_results_per_date,
                         max_price=config.max_price,
                         allowed_airlines=allowed_airlines,
+                        throttle_seconds=config.request_throttle_seconds,
+                        max_retries=config.serpapi_max_retries,
+                        backoff_base_seconds=config.serpapi_backoff_base_seconds,
+                        max_backoff_seconds=config.serpapi_max_backoff_seconds,
                     )
+                    requests_made += 1
                     deals.extend(offers)
             except Exception as exc:
                 print(f"Advertencia: se omite {origin}->{destination} ({departure_date.isoformat()}): {exc}")
                 continue
 
+    return _dedupe_and_sort(deals)
+
+
+def _dedupe_and_sort(deals: list[FlightOffer]) -> list[FlightOffer]:
     # Keep the best deal per exact route+date+carriers tuple.
     unique: dict[tuple[str, str, str, str, tuple[str, ...]], FlightOffer] = {}
     for deal in deals:

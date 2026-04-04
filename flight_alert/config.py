@@ -107,6 +107,11 @@ class AppConfig:
     hl: str
     deep_search: bool
     max_results_per_date: int
+    request_throttle_seconds: float
+    max_requests_per_run: int
+    serpapi_max_retries: int
+    serpapi_backoff_base_seconds: float
+    serpapi_max_backoff_seconds: float
     send_telegram: bool
     telegram_bot_token: Optional[str]
     telegram_chat_id: Optional[str]
@@ -173,6 +178,19 @@ def load_config() -> AppConfig:
     hl = os.getenv("GOOGLE_FLIGHTS_HL", "es").lower()
     deep_search = _bool_env("DEEP_SEARCH", False)
     max_results_per_date = int(os.getenv("MAX_RESULTS_PER_DATE", "5"))
+    request_throttle_seconds = float(
+        os.getenv("REQUEST_THROTTLE_SECONDS", os.getenv("REQUEST_DELAY_SECONDS", "1.5"))
+    )
+    max_requests_per_run = int(
+        os.getenv("REQUEST_MAX_PER_RUN", os.getenv("MAX_REQUESTS_PER_RUN", "60"))
+    )
+    serpapi_max_retries = int(os.getenv("SERPAPI_MAX_RETRIES", "4"))
+    serpapi_backoff_base_seconds = float(
+        os.getenv("SERPAPI_BACKOFF_BASE_SECONDS", "2")
+    )
+    serpapi_max_backoff_seconds = float(
+        os.getenv("SERPAPI_MAX_BACKOFF_SECONDS", "30")
+    )
 
     send_telegram = _bool_env("SEND_TELEGRAM", True)
     telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -214,6 +232,16 @@ def load_config() -> AppConfig:
         raise ValueError("ADULTS debe ser mayor a 0.")
     if max_results_per_date <= 0:
         raise ValueError("MAX_RESULTS_PER_DATE debe ser mayor a 0.")
+    if request_throttle_seconds < 0:
+        raise ValueError("REQUEST_THROTTLE_SECONDS no puede ser negativo.")
+    if max_requests_per_run <= 0:
+        raise ValueError("MAX_REQUESTS_PER_RUN debe ser mayor a 0.")
+    if serpapi_max_retries < 0:
+        raise ValueError("SERPAPI_MAX_RETRIES no puede ser negativo.")
+    if serpapi_backoff_base_seconds <= 0:
+        raise ValueError("SERPAPI_BACKOFF_BASE_SECONDS debe ser mayor a 0.")
+    if serpapi_max_backoff_seconds <= 0:
+        raise ValueError("SERPAPI_MAX_BACKOFF_SECONDS debe ser mayor a 0.")
     if check_interval_hours <= 0:
         raise ValueError("CHECK_INTERVAL_HOURS debe ser mayor a 0.")
 
@@ -238,6 +266,11 @@ def load_config() -> AppConfig:
         hl=hl,
         deep_search=deep_search,
         max_results_per_date=max_results_per_date,
+        request_throttle_seconds=request_throttle_seconds,
+        max_requests_per_run=max_requests_per_run,
+        serpapi_max_retries=serpapi_max_retries,
+        serpapi_backoff_base_seconds=serpapi_backoff_base_seconds,
+        serpapi_max_backoff_seconds=serpapi_max_backoff_seconds,
         send_telegram=send_telegram,
         telegram_bot_token=telegram_bot_token,
         telegram_chat_id=telegram_chat_id,

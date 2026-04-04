@@ -78,6 +78,21 @@ En `AIRLINES` podes filtrar por codigos IATA de aerolinea:
 
 Si queres incluir todas, deja `AIRLINES=` vacio.
 
+### Evitar errores 429 (Too Many Requests)
+
+Si ves muchos `429` de SerpAPI, baja volumen por corrida con:
+
+```env
+DEEP_SEARCH=false
+MAX_RESULTS_PER_DATE=1
+REQUEST_THROTTLE_SECONDS=0.7
+MAX_REQUESTS_PER_RUN=40
+SERPAPI_MAX_RETRIES=4
+SERPAPI_BACKOFF_BASE_SECONDS=2.0
+```
+
+Tambien ayuda usar menos rutas por corrida (por bloques).
+
 ## 4) Notificaciones por Telegram (gratis)
 
 1. Crea un bot con **@BotFather** y copia el token.
@@ -135,6 +150,10 @@ python3 vuelo_alerta.py
 - `AIRLINES`: filtro opcional de aerolineas
 - `GOOGLE_FLIGHTS_GL`: pais Google Flights (ej: `ar`)
 - `GOOGLE_FLIGHTS_HL`: idioma Google Flights (ej: `es`)
+- `REQUEST_THROTTLE_SECONDS`: pausa entre requests para no saturar la API
+- `MAX_REQUESTS_PER_RUN`: tope de requests por ejecucion
+- `SERPAPI_MAX_RETRIES`: reintentos automáticos en 429/5xx
+- `SERPAPI_BACKOFF_BASE_SECONDS`: base de espera exponencial entre reintentos
 - `SEND_TELEGRAM`: envia alertas por Telegram
 - `SEND_EMAIL`: email opcional (por default `false`)
 
