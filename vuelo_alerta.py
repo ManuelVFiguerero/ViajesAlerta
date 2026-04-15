@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import requests
 import sys
 import time
 
 from flight_alert.config import AppConfig, load_config
-from flight_alert.notifier import send_email_alert, send_whatsapp_alert
+from flight_alert.notifier import send_email_alert, send_telegram_alert
 from flight_alert.service import render_deals_message, search_deals
 
 
@@ -18,12 +19,12 @@ def _run_once(config: AppConfig) -> bool:
     body = render_deals_message(deals, config=config)
     print(body)
 
-    if config.send_whatsapp:
+    if config.send_telegram:
         try:
-            send_whatsapp_alert(config=config, body=body)
-            print("WhatsApp enviado con alertas de vuelos baratos.")
-        except ValueError as exc:
-            print(f"No se pudo enviar WhatsApp: {exc}")
+            send_telegram_alert(config=config, body=body)
+            print("Telegram enviado con alertas de vuelos baratos.")
+        except (ValueError, requests.RequestException) as exc:
+            print(f"No se pudo enviar Telegram: {exc}")
 
     if config.send_email:
         try:

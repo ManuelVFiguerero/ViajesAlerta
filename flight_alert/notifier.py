@@ -1,46 +1,90 @@
 import smtplib
+import time
 from email.message import EmailMessage
-from typing import Any
 
 import requests
 from flight_alert.config import AppConfig
 
 
-def _normalize_whatsapp_number(number: str) -> str:
-    digits = "".join(ch for ch in number if ch.isdigit())
-    if not digits:
-        raise ValueError("WHATSAPP_TO no tiene digitos validos.")
-    return f"whatsapp:+{digits}"
+_TELEGRAM_MESSAGE_LIMIT = 3900
+_TELEGRAM_MAX_RETRIES = 3
+_TELEGRAM_BACKOFF_BASE_SECONDS = 2.0
 
 
-def send_whatsapp_alert(config: AppConfig, body: str) -> None:
-    if not config.whatsapp_to:
-        raise ValueError("SEND_WHATSAPP=true requiere WHATSAPP_TO.")
-    if not config.twilio_account_sid or not config.twilio_auth_token:
+def _split_telegram_message(text: str, limit: int = _TELEGRAM_MESSAGE_LIMIT) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+    while remaining:
+        if len(remaining) <= limit:
+            chunks.append(remaining)
+            break
+
+        cut = remaining.rfind("\n", 0, limit)
+        if cut <= 0:
+            cut = limit
+        chunks.append(remaining[:cut].strip())
+        remaining = remaining[cut:].lstrip()
+
+    return [chunk for chunk in chunks if chunk]
+
+
+def _raise_telegram_error(response: requests.Response) -> None:
+    detail = response.text
+    try:
+        payload = response.json()
+        detail = payload.get("description", detail)
+    except ValueError:
+        pass
+    raise RuntimeError(f"Telegram API error {response.status_code}: {detail}")
+
+
+def _send_telegram_chunk_with_retry(url: str, payload: dict[str, str]) -> None:
+    attempt = 0
+    while True:
+        try:
+            response = requests.post(url, data=payload, timeout=20)
+        except requests.RequestException as exc:
+            if attempt >= _TELEGRAM_MAX_RETRIES:
+                raise RuntimeError(
+                    "No se pudo conectar a Telegram luego de varios reintentos."
+                ) from exc
+            wait_seconds = min(20.0, _TELEGRAM_BACKOFF_BASE_SECONDS * (2**attempt))
+            time.sleep(wait_seconds)
+            attempt += 1
+            continue
+
+        if response.ok:
+            return
+
+        retryable = response.status_code == 429 or response.status_code >= 500
+        if not retryable or attempt >= _TELEGRAM_MAX_RETRIES:
+            _raise_telegram_error(response)
+
+        wait_seconds = min(20.0, _TELEGRAM_BACKOFF_BASE_SECONDS * (2**attempt))
+        time.sleep(wait_seconds)
+        attempt += 1
+
+
+def send_telegram_alert(config: AppConfig, body: str) -> None:
+    if not config.telegram_bot_token or not config.telegram_chat_id:
         raise ValueError(
-            "SEND_WHATSAPP=true requiere TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN."
+            "SEND_TELEGRAM=true requiere TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID."
         )
-    if not config.twilio_whatsapp_from:
-        raise ValueError("SEND_WHATSAPP=true requiere TWILIO_WHATSAPP_FROM.")
-
-    to_number = _normalize_whatsapp_number(config.whatsapp_to)
-    from_number = config.twilio_whatsapp_from.strip()
-    if not from_number.startswith("whatsapp:+"):
-        digits = "".join(ch for ch in from_number if ch.isdigit())
-        from_number = f"whatsapp:+{digits}"
 
     url = (
-        "https://api.twilio.com/2010-04-01/Accounts/"
-        f"{config.twilio_account_sid}/Messages.json"
+        f"https://api.telegram.org/bot{config.telegram_bot_token}/sendMessage"
     )
-    payload: dict[str, Any] = {"From": from_number, "To": to_number, "Body": body}
-    response = requests.post(
-        url,
-        data=payload,
-        auth=(config.twilio_account_sid, config.twilio_auth_token),
-        timeout=20,
-    )
-    response.raise_for_status()
+
+    for chunk in _split_telegram_message(body):
+        payload = {
+            "chat_id": str(config.telegram_chat_id).strip(),
+            "text": chunk,
+            "disable_web_page_preview": True,
+        }
+        _send_telegram_chunk_with_retry(url=url, payload=payload)
 
 
 def send_email_alert(config: AppConfig, body: str) -> None:
