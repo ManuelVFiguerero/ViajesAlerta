@@ -93,6 +93,24 @@ SERPAPI_BACKOFF_BASE_SECONDS=2.0
 
 Tambien ayuda usar menos rutas por corrida (por bloques).
 
+### Rotacion diaria de rutas con presupuesto (ideal para 250 consultas/mes)
+
+Si tu plan tiene pocas consultas, podes limitar la corrida a un presupuesto fijo y
+hacer que el sistema cambie de rutas automaticamente cada dia:
+
+```env
+DAILY_REQUEST_BUDGET=6
+ROTATE_ROUTES_DAILY=true
+ROUTE_ROTATION_STATE_FILE=data/route_rotation_state.json
+```
+
+Con eso:
+- la corrida usa como maximo 6 requests (ademas de `REQUEST_MAX_PER_RUN`);
+- cada dia toma otro bloque de rutas de forma circular;
+- no tenes que cambiar `ROUTES` manualmente todos los dias.
+
+Tip: combina esto con cron diario (una sola corrida por dia).
+
 ### Error 401 Unauthorized en SerpAPI
 
 Si ves en logs `401 Unauthorized` o `403 Forbidden`:
@@ -162,8 +180,14 @@ python3 vuelo_alerta.py
 - `GOOGLE_FLIGHTS_HL`: idioma Google Flights (ej: `es`)
 - `REQUEST_THROTTLE_SECONDS`: pausa entre requests para no saturar la API
 - `MAX_REQUESTS_PER_RUN`: tope de requests por ejecucion
+- `DAILY_REQUEST_BUDGET`: tope diario deseado (si > 0, aplica como limite adicional por corrida)
+- `ROTATE_ROUTES_DAILY`: rota rutas automaticamente entre corridas diarias
+- `ROUTE_ROTATION_STATE_FILE`: archivo donde se guarda el puntero de rotacion
 - `SERPAPI_MAX_RETRIES`: reintentos automáticos en 429/5xx
 - `SERPAPI_BACKOFF_BASE_SECONDS`: base de espera exponencial entre reintentos
+- `SEND_PROMOS`: habilita envio de promos desde RSS
+- `PROMO_FEEDS`: lista de feeds RSS separados por coma
+- `PROMO_MAX_ITEMS`: maximo de promos por mensaje
 - `SEND_TELEGRAM`: envia alertas por Telegram
 - `SEND_EMAIL`: email opcional (por default `false`)
 
@@ -174,3 +198,4 @@ python3 vuelo_alerta.py
 - Si no hay ofertas por debajo del umbral, no se envia alerta.
 - Si alguna combinacion devuelve error o sin resultados, se salta y el resto continua.
 - Cada oferta en Telegram incluye un enlace directo a Google Flights.
+- Si activas promos RSS (`SEND_PROMOS=true`), Telegram incluye bloque de promociones.

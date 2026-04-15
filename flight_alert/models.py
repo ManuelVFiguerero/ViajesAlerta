@@ -23,3 +23,11 @@ class FlightOffer:
             self.return_at[:10] if self.return_at else "",
             self.carriers,
         )
+
+
+@dataclass(frozen=True)
+class PromoOffer:
+    title: str
+    link: str
+    source: str
+    published_at: str | None
