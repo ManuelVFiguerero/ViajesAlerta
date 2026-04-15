@@ -1,4 +1,5 @@
 import smtplib
+import time
 from email.message import EmailMessage
 
 import requests
@@ -6,6 +7,8 @@ from flight_alert.config import AppConfig
 
 
 _TELEGRAM_MESSAGE_LIMIT = 3900
+_TELEGRAM_MAX_RETRIES = 3
+_TELEGRAM_BACKOFF_BASE_SECONDS = 2.0
 
 
 def _split_telegram_message(text: str, limit: int = _TELEGRAM_MESSAGE_LIMIT) -> list[str]:
@@ -38,6 +41,33 @@ def _raise_telegram_error(response: requests.Response) -> None:
     raise RuntimeError(f"Telegram API error {response.status_code}: {detail}")
 
 
+def _send_telegram_chunk_with_retry(url: str, payload: dict[str, str]) -> None:
+    attempt = 0
+    while True:
+        try:
+            response = requests.post(url, data=payload, timeout=20)
+        except requests.RequestException as exc:
+            if attempt >= _TELEGRAM_MAX_RETRIES:
+                raise RuntimeError(
+                    "No se pudo conectar a Telegram luego de varios reintentos."
+                ) from exc
+            wait_seconds = min(20.0, _TELEGRAM_BACKOFF_BASE_SECONDS * (2**attempt))
+            time.sleep(wait_seconds)
+            attempt += 1
+            continue
+
+        if response.ok:
+            return
+
+        retryable = response.status_code == 429 or response.status_code >= 500
+        if not retryable or attempt >= _TELEGRAM_MAX_RETRIES:
+            _raise_telegram_error(response)
+
+        wait_seconds = min(20.0, _TELEGRAM_BACKOFF_BASE_SECONDS * (2**attempt))
+        time.sleep(wait_seconds)
+        attempt += 1
+
+
 def send_telegram_alert(config: AppConfig, body: str) -> None:
     if not config.telegram_bot_token or not config.telegram_chat_id:
         raise ValueError(
@@ -54,13 +84,7 @@ def send_telegram_alert(config: AppConfig, body: str) -> None:
             "text": chunk,
             "disable_web_page_preview": True,
         }
-        response = requests.post(
-            url,
-            data=payload,
-            timeout=20,
-        )
-        if not response.ok:
-            _raise_telegram_error(response)
+        _send_telegram_chunk_with_retry(url=url, payload=payload)
 
 
 def send_email_alert(config: AppConfig, body: str) -> None:

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-import time
 from typing import Iterable
 
 from .config import AppConfig
 from .models import FlightOffer
-from .serpapi_client import SerpApiClient
+from .serpapi_client import SerpApiAuthError, SerpApiClient, SerpApiQuotaError
 
 
 def _iter_departure_dates(config: AppConfig) -> Iterable[date]:
@@ -95,8 +94,21 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
                     )
                     requests_made += 1
                     deals.extend(offers)
+            except SerpApiAuthError as exc:
+                print(f"Error critico de autenticacion SerpAPI: {exc}")
+                print(
+                    "Se detiene la corrida para evitar spam de errores. "
+                    "Actualiza SERPAPI_KEY y reintenta."
+                )
+                return _dedupe_and_sort(deals)
+            except SerpApiQuotaError as exc:
+                print(f"Se detiene por cuota/rate-limit de SerpAPI: {exc}")
+                return _dedupe_and_sort(deals)
             except Exception as exc:
-                print(f"Advertencia: se omite {origin}->{destination} ({departure_date.isoformat()}): {exc}")
+                print(
+                    "Advertencia: se omite "
+                    f"{origin}->{destination} ({departure_date.isoformat()}): {exc}"
+                )
                 continue
 
     return _dedupe_and_sort(deals)

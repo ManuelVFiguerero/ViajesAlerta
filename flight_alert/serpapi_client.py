@@ -9,6 +9,28 @@ from urllib.parse import urlencode
 from .models import FlightOffer
 
 
+class SerpApiError(RuntimeError):
+    """Base exception for SerpAPI failures."""
+
+
+class SerpApiAuthError(SerpApiError):
+    """Raised when SerpAPI credentials are invalid or unauthorized."""
+
+
+class SerpApiQuotaError(SerpApiError):
+    """Raised when SerpAPI usage quota is exhausted or heavily rate limited."""
+
+
+def _response_error_detail(response: requests.Response) -> str:
+    detail = response.text.strip()
+    try:
+        payload = response.json()
+        detail = str(payload.get("error") or payload.get("message") or detail)
+    except ValueError:
+        pass
+    return detail or f"HTTP {response.status_code}"
+
+
 class SerpApiClient:
     def __init__(self, api_key: str, timeout_seconds: int = 30) -> None:
         self._api_key = api_key
@@ -90,7 +112,15 @@ class SerpApiClient:
             time.sleep(throttle_seconds)
         payload = response.json()
         if payload.get("error"):
-            raise RuntimeError(f"SerpAPI error: {payload['error']}")
+            error_text = str(payload["error"])
+            lowered = error_text.lower()
+            if "hasn't returned any results" in lowered:
+                return []
+            if "run out of searches" in lowered or "out of searches" in lowered:
+                raise SerpApiQuotaError(
+                    "SerpAPI reporta que la cuenta no tiene busquedas disponibles."
+                )
+            raise SerpApiError(f"SerpAPI error: {error_text}")
 
         raw_offers = (payload.get("best_flights") or []) + (payload.get("other_flights") or [])
         offers: list[FlightOffer] = []
@@ -124,21 +154,63 @@ class SerpApiClient:
     ) -> requests.Response:
         attempt = 0
         while True:
-            response = requests.get(url, params=params, timeout=self._timeout_seconds)
+            try:
+                response = requests.get(url, params=params, timeout=self._timeout_seconds)
+            except requests.RequestException as exc:
+                if attempt >= max_retries:
+                    raise SerpApiError(
+                        "Error de red consultando SerpAPI luego de varios reintentos."
+                    ) from exc
+                wait_seconds = min(
+                    max_backoff_seconds,
+                    backoff_base_seconds * (2**attempt),
+                )
+                time.sleep(wait_seconds)
+                attempt += 1
+                continue
 
             # Treat "no results" as a valid empty response instead of an exception.
             if response.status_code == 200:
                 payload = response.json()
                 if payload.get("error"):
                     error_text = str(payload["error"])
-                    if "hasn't returned any results" in error_text:
+                    lowered = error_text.lower()
+                    if "hasn't returned any results" in lowered:
                         return response
-                    raise RuntimeError(f"SerpAPI error: {error_text}")
+                    if "run out of searches" in lowered or "out of searches" in lowered:
+                        raise SerpApiQuotaError(
+                            "SerpAPI reporta que la cuenta no tiene busquedas disponibles."
+                        )
+                    raise SerpApiError(f"SerpAPI error: {error_text}")
                 return response
+
+            detail = _response_error_detail(response)
+            lowered_detail = detail.lower()
+
+            if response.status_code in {401, 403}:
+                raise SerpApiAuthError(
+                    "SerpAPI devolvio Unauthorized/Forbidden (401/403). "
+                    "Revisa SERPAPI_KEY en .env, que siga activa y con permisos. "
+                    f"Detalle: {detail}"
+                )
+
+            if response.status_code == 429 and (
+                "run out of searches" in lowered_detail or "out of searches" in lowered_detail
+            ):
+                raise SerpApiQuotaError(
+                    "SerpAPI reporta que no quedan busquedas en la cuenta."
+                )
 
             is_retryable = response.status_code == 429 or 500 <= response.status_code < 600
             if not is_retryable or attempt >= max_retries:
-                response.raise_for_status()
+                if response.status_code == 429:
+                    raise SerpApiQuotaError(
+                        "SerpAPI devolvio 429 (Too Many Requests) tras reintentos. "
+                        "Baja volumen de consultas o divide rutas en bloques."
+                    )
+                raise SerpApiError(
+                    f"SerpAPI devolvio HTTP {response.status_code}. Detalle: {detail}"
+                )
 
             retry_after = response.headers.get("Retry-After")
             if retry_after and retry_after.isdigit():
