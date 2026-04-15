@@ -109,6 +109,9 @@ class AppConfig:
     max_results_per_date: int
     request_throttle_seconds: float
     max_requests_per_run: int
+    daily_request_budget: int
+    rotate_routes_daily: bool
+    route_rotation_state_file: str
     serpapi_max_retries: int
     serpapi_backoff_base_seconds: float
     serpapi_max_backoff_seconds: float
@@ -125,6 +128,9 @@ class AppConfig:
     send_email: bool
     run_forever: bool
     check_interval_hours: int
+    send_promos: bool
+    promo_feeds: list[str]
+    promo_max_items: int
 
     def allowed_airlines_set(self) -> Optional[set[str]]:
         if not self.airlines:
@@ -184,6 +190,11 @@ def load_config() -> AppConfig:
     max_requests_per_run = int(
         os.getenv("REQUEST_MAX_PER_RUN", os.getenv("MAX_REQUESTS_PER_RUN", "60"))
     )
+    daily_request_budget = int(os.getenv("DAILY_REQUEST_BUDGET", "0"))
+    rotate_routes_daily = _bool_env("ROTATE_ROUTES_DAILY", False)
+    route_rotation_state_file = os.getenv(
+        "ROUTE_ROTATION_STATE_FILE", "data/route_rotation_state.json"
+    ).strip() or "data/route_rotation_state.json"
     serpapi_max_retries = int(os.getenv("SERPAPI_MAX_RETRIES", "4"))
     serpapi_backoff_base_seconds = float(
         os.getenv("SERPAPI_BACKOFF_BASE_SECONDS", "2")
@@ -207,6 +218,9 @@ def load_config() -> AppConfig:
 
     run_forever = _bool_env("RUN_FOREVER", False)
     check_interval_hours = int(os.getenv("CHECK_INTERVAL_HOURS", "24"))
+    send_promos = _bool_env("SEND_PROMOS", False)
+    promo_feeds = _parse_csv(os.getenv("PROMO_FEEDS", ""))
+    promo_max_items = int(os.getenv("PROMO_MAX_ITEMS", "5"))
 
     if fixed_departure_date_from and not fixed_departure_date_to:
         fixed_departure_date_to = fixed_departure_date_from
@@ -236,6 +250,8 @@ def load_config() -> AppConfig:
         raise ValueError("REQUEST_THROTTLE_SECONDS no puede ser negativo.")
     if max_requests_per_run <= 0:
         raise ValueError("MAX_REQUESTS_PER_RUN debe ser mayor a 0.")
+    if daily_request_budget < 0:
+        raise ValueError("DAILY_REQUEST_BUDGET no puede ser negativo.")
     if serpapi_max_retries < 0:
         raise ValueError("SERPAPI_MAX_RETRIES no puede ser negativo.")
     if serpapi_backoff_base_seconds <= 0:
@@ -244,6 +260,8 @@ def load_config() -> AppConfig:
         raise ValueError("SERPAPI_MAX_BACKOFF_SECONDS debe ser mayor a 0.")
     if check_interval_hours <= 0:
         raise ValueError("CHECK_INTERVAL_HOURS debe ser mayor a 0.")
+    if promo_max_items <= 0:
+        raise ValueError("PROMO_MAX_ITEMS debe ser mayor a 0.")
 
     return AppConfig(
         serpapi_key=serpapi_key,
@@ -268,6 +286,9 @@ def load_config() -> AppConfig:
         max_results_per_date=max_results_per_date,
         request_throttle_seconds=request_throttle_seconds,
         max_requests_per_run=max_requests_per_run,
+        daily_request_budget=daily_request_budget,
+        rotate_routes_daily=rotate_routes_daily,
+        route_rotation_state_file=route_rotation_state_file,
         serpapi_max_retries=serpapi_max_retries,
         serpapi_backoff_base_seconds=serpapi_backoff_base_seconds,
         serpapi_max_backoff_seconds=serpapi_max_backoff_seconds,
@@ -284,4 +305,7 @@ def load_config() -> AppConfig:
         send_email=send_email,
         run_forever=run_forever,
         check_interval_hours=check_interval_hours,
+        send_promos=send_promos,
+        promo_feeds=promo_feeds,
+        promo_max_items=promo_max_items,
     )

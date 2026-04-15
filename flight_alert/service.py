@@ -4,8 +4,10 @@ from datetime import date, timedelta
 from typing import Iterable
 
 from .config import AppConfig
-from .models import FlightOffer
+from .models import FlightOffer, PromoOffer
+from .promo import fetch_promos
 from .serpapi_client import SerpApiAuthError, SerpApiClient, SerpApiQuotaError
+from .state import pick_rotating_routes
 
 
 def _iter_departure_dates(config: AppConfig) -> Iterable[date]:
@@ -22,13 +24,52 @@ def _iter_departure_dates(config: AppConfig) -> Iterable[date]:
         current += timedelta(days=config.date_step_days)
 
 
+def _count_departure_dates(config: AppConfig) -> int:
+    return sum(1 for _ in _iter_departure_dates(config))
+
+
+def _estimate_requests_per_route(config: AppConfig) -> int:
+    departure_count = max(1, _count_departure_dates(config))
+    if config.trip_type == 1:
+        return_count = ((config.return_days_max - config.return_days_min) // config.return_days_step) + 1
+    else:
+        return_count = 1
+    return max(1, departure_count * max(1, return_count))
+
+
+def _effective_request_cap(config: AppConfig) -> int:
+    cap = config.max_requests_per_run
+    if config.daily_request_budget > 0:
+        cap = min(cap, config.daily_request_budget)
+    return cap
+
+
 def search_deals(config: AppConfig) -> list[FlightOffer]:
     client = SerpApiClient(api_key=config.serpapi_key)
     allowed_airlines = config.allowed_airlines_set()
     deals: list[FlightOffer] = []
     requests_made = 0
+    request_cap = _effective_request_cap(config)
+    routes_to_process = config.routes
+    if config.rotate_routes_daily and config.daily_request_budget > 0:
+        routes_to_process = pick_rotating_routes(
+            all_routes=config.routes,
+            budget_requests=config.daily_request_budget,
+            state_file_path=config.route_rotation_state_file,
+            trip_type=config.trip_type,
+            return_days_min=config.return_days_min,
+            return_days_max=config.return_days_max,
+            return_days_step=config.return_days_step,
+            requests_per_route=_estimate_requests_per_route(config),
+        )
+        labels = [f"{o}-{d}" for o, d in routes_to_process]
+        print(
+            "Rotacion diaria activa: rutas elegidas hoy: "
+            f"{', '.join(labels) if labels else '(ninguna)'}"
+        )
+    print(f"Presupuesto efectivo de requests para esta corrida: {request_cap}")
 
-    for origin, destination in config.routes:
+    for origin, destination in routes_to_process:
         for departure_date in _iter_departure_dates(config):
             try:
                 if config.trip_type == 1:
@@ -36,7 +77,7 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
                     return_end = departure_date + timedelta(days=config.return_days_max)
                     return_date = return_start
                     while return_date <= return_end:
-                        if requests_made >= config.max_requests_per_run:
+                        if requests_made >= request_cap:
                             print(
                                 "Se alcanzo MAX_REQUESTS_PER_RUN, "
                                 "se detiene la busqueda en esta corrida."
@@ -66,7 +107,7 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
                         deals.extend(offers)
                         return_date += timedelta(days=config.return_days_step)
                 else:
-                    if requests_made >= config.max_requests_per_run:
+                    if requests_made >= request_cap:
                         print(
                             "Se alcanzo MAX_REQUESTS_PER_RUN, "
                             "se detiene la busqueda en esta corrida."
@@ -114,6 +155,12 @@ def search_deals(config: AppConfig) -> list[FlightOffer]:
     return _dedupe_and_sort(deals)
 
 
+def search_promos(config: AppConfig) -> list[PromoOffer]:
+    if not config.send_promos or not config.promo_feeds:
+        return []
+    return fetch_promos(feeds=config.promo_feeds, max_items=config.promo_max_items)
+
+
 def _dedupe_and_sort(deals: list[FlightOffer]) -> list[FlightOffer]:
     # Keep the best deal per exact route+date+carriers tuple.
     unique: dict[tuple[str, str, str, str, tuple[str, ...]], FlightOffer] = {}
@@ -146,4 +193,11 @@ def render_deals_message(deals: list[FlightOffer], config: AppConfig) -> str:
             f"Aerolineas: {airlines} | Escalas: {deal.stops}\n"
             f"  Link: {booking_link}"
         )
+    return "\n".join(lines)
+
+
+def render_promos_message(promos: list[PromoOffer]) -> str:
+    lines = ["Promociones detectadas:", ""]
+    for promo in promos:
+        lines.append(f"- {promo.title}\n  Link: {promo.link}")
     return "\n".join(lines)

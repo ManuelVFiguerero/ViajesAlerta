@@ -6,24 +6,36 @@ import time
 
 from flight_alert.config import AppConfig, load_config
 from flight_alert.notifier import send_email_alert, send_telegram_alert
-from flight_alert.service import render_deals_message, search_deals
+from flight_alert.service import (
+    render_deals_message,
+    render_promos_message,
+    search_deals,
+    search_promos,
+)
 
 
 def _run_once(config: AppConfig) -> bool:
     deals = search_deals(config)
+    promos = search_promos(config)
 
-    if not deals:
-        print("No se encontraron vuelos baratos para los criterios configurados.")
+    message_blocks: list[str] = []
+    if deals:
+        message_blocks.append(render_deals_message(deals, config=config))
+    if promos:
+        message_blocks.append(render_promos_message(promos))
+
+    if not message_blocks:
+        print("No se encontraron vuelos baratos ni promociones nuevas.")
         return False
 
-    body = render_deals_message(deals, config=config)
+    body = "\n\n".join(message_blocks)
     print(body)
 
     if config.send_telegram:
         try:
             send_telegram_alert(config=config, body=body)
             print("Telegram enviado con alertas de vuelos baratos.")
-        except (ValueError, requests.RequestException) as exc:
+        except (ValueError, requests.RequestException, RuntimeError) as exc:
             print(f"No se pudo enviar Telegram: {exc}")
 
     if config.send_email:
