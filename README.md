@@ -93,6 +93,16 @@ SERPAPI_BACKOFF_BASE_SECONDS=2.0
 
 Tambien ayuda usar menos rutas por corrida (por bloques).
 
+### Error 401 Unauthorized en SerpAPI
+
+Si ves en logs `401 Unauthorized` o `403 Forbidden`:
+
+1. Verifica que `SERPAPI_KEY` en `.env` sea la clave vigente.
+2. Si la clave se expuso en capturas/logs, regenerala en SerpAPI y actualiza `.env`.
+3. Revisa que la cuenta tenga plan activo y permiso para `google_flights`.
+
+El script ahora corta la corrida al detectar 401/403 para evitar llenar el log con el mismo error.
+
 ## 4) Notificaciones por Telegram (gratis)
 
 1. Crea un bot con **@BotFather** y copia el token.
